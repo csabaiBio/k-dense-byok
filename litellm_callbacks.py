@@ -215,6 +215,65 @@ def _merge_header_sources(kwargs: dict[str, Any]) -> dict[str, str]:
     return merged
 
 
+def _model_rejects_temperature_and_top_p(model: Any) -> bool:
+    """Return True for model ids that reject simultaneous sampling params."""
+    if not isinstance(model, str):
+        return False
+    lowered = model.lower()
+    return "claude" in lowered 
+
+
+def _read_sampling_param(payload: dict[str, Any], key: str) -> Any:
+    """Read sampling params across known LiteLLM request payload shapes."""
+    if not isinstance(payload, dict):
+        return None
+    if payload.get(key) is not None:
+        return payload.get(key)
+
+    optional = payload.get("optional_params")
+    if isinstance(optional, dict) and optional.get(key) is not None:
+        return optional.get(key)
+
+    generation = payload.get("generation_config")
+    if isinstance(generation, dict) and generation.get(key) is not None:
+        return generation.get(key)
+
+    return None
+
+
+def _drop_top_p(payload: dict[str, Any]) -> None:
+    """Drop ``top_p`` from all known request containers."""
+    payload.pop("top_p", None)
+    optional = payload.get("optional_params")
+    if isinstance(optional, dict):
+        optional.pop("top_p", None)
+    generation = payload.get("generation_config")
+    if isinstance(generation, dict):
+        generation.pop("top_p", None)
+
+
+def _sanitize_sampling_params(payload: dict[str, Any], model_hint: Any = None) -> bool:
+    """Normalize sampling params for providers that forbid temp+top_p together.
+
+    Returns True when the payload was modified.
+    """
+    if not isinstance(payload, dict):
+        return False
+    model = payload.get("model") or model_hint
+    if not _model_rejects_temperature_and_top_p(model):
+        return False
+
+    temperature = _read_sampling_param(payload, "temperature")
+    top_p = _read_sampling_param(payload, "top_p")
+    if temperature is None or top_p is None:
+        return False
+
+    # Keep explicit temperature and drop top_p to satisfy Anthropic-on-Azure
+    # deployments that reject setting both simultaneously.
+    _drop_top_p(payload)
+    return True
+
+
 class OpenRouterPrefixFix(CustomLogger):
     """LiteLLM proxy callback — patches + expert cost tracking.
 
@@ -270,6 +329,26 @@ class OpenRouterPrefixFix(CustomLogger):
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Expert cost callback failed: %s", exc)
+
+    def log_pre_api_call(self, model, messages, kwargs):  # type: ignore[no-untyped-def]
+        if isinstance(kwargs, dict) and _sanitize_sampling_params(kwargs, model_hint=model):
+            logger.debug(
+                "Sanitized sampling params for model %s: dropped top_p", kwargs.get("model")
+            )
+
+    async def async_pre_call_hook(  # type: ignore[no-untyped-def]
+        self,
+        user_api_key_dict,
+        cache,
+        data,
+        call_type,
+    ):
+        model_hint = data.get("model_group") if isinstance(data, dict) else None
+        if isinstance(data, dict) and _sanitize_sampling_params(data, model_hint=model_hint):
+            logger.debug(
+                "Sanitized sampling params for model %s in async hook", data.get("model")
+            )
+        return data
 
     def log_success_event(self, kwargs, response_obj, start_time, end_time):
         self._record(kwargs, response_obj)

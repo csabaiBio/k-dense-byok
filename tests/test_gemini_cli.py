@@ -17,6 +17,8 @@ def test_cli_model_routing_and_workdir_safety(active_project: str) -> None:
     assert gemini_cli._cli_can_route("gemini-3-pro")
     assert gemini_cli._cli_can_route("ollama/llama3")
     assert gemini_cli._cli_can_route("openrouter/vendor/model")
+    assert gemini_cli._cli_can_route("azure/claude-sonnet-4-5")
+    assert gemini_cli._cli_can_route("azure_ai/claude-sonnet-4-5")
     assert not gemini_cli._cli_can_route("anthropic/claude")
 
     assert gemini_cli._resolve_working_directory("nested", sandbox) == nested.resolve()

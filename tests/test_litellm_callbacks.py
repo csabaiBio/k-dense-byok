@@ -83,6 +83,51 @@ def test_merge_header_sources_precedence() -> None:
     assert headers == {"A": "1", "B": "optional", "C": "2", "D": "3"}
 
 
+def test_sanitize_sampling_params_for_azure_models() -> None:
+    import litellm_callbacks
+
+    payload = {
+        "model": "azure_ai/claude-sonnet-4-5",
+        "temperature": 0.3,
+        "top_p": 0.95,
+    }
+    changed = litellm_callbacks._sanitize_sampling_params(payload)
+
+    assert changed is True
+    assert payload["temperature"] == 0.3
+    assert "top_p" not in payload
+
+
+def test_sanitize_sampling_params_noop_when_single_param() -> None:
+    import litellm_callbacks
+
+    payload = {
+        "model": "azure_ai/claude-sonnet-4-5",
+        "temperature": 0.3,
+    }
+    changed = litellm_callbacks._sanitize_sampling_params(payload)
+
+    assert changed is False
+    assert payload == {
+        "model": "azure_ai/claude-sonnet-4-5",
+        "temperature": 0.3,
+    }
+
+
+def test_sanitize_sampling_params_noop_for_non_azure() -> None:
+    import litellm_callbacks
+
+    payload = {
+        "model": "openrouter/anthropic/claude-opus-4.8",
+        "temperature": 0.3,
+        "top_p": 0.95,
+    }
+    changed = litellm_callbacks._sanitize_sampling_params(payload)
+
+    assert changed is False
+    assert payload["top_p"] == 0.95
+
+
 def test_proxy_callback_records_expert_cost(active_project: str) -> None:
     import litellm_callbacks
     from kady_agent import runtime

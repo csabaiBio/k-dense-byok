@@ -45,8 +45,9 @@ def _cli_can_route(model: str) -> bool:
 
     The expert subprocess routes through the LiteLLM proxy at
     ``GOOGLE_GEMINI_BASE_URL``. Only models configured there resolve:
-    the explicit ``gemini-*`` entries, the ``ollama/*`` wildcard, and
-    the ``openrouter/*`` wildcard. Anything else would cause the CLI to
+    the explicit ``gemini-*`` entries, the ``ollama/*`` wildcard, the
+    ``openrouter/*`` wildcard, and Azure wildcard routes (``azure/*`` /
+    ``azure_ai/*``). Anything else would cause the CLI to
     hang on a 404 from the proxy, so we drop the ``-m`` flag and let the
     CLI fall back to its built-in default Gemini model.
     """
@@ -54,6 +55,8 @@ def _cli_can_route(model: str) -> bool:
         model.startswith("gemini-")
         or model.startswith("ollama/")
         or model.startswith("openrouter/")
+        or model.startswith("azure/")
+        or model.startswith("azure_ai/")
     )
 
 

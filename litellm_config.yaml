@@ -52,6 +52,29 @@ model_list:
         HTTP-Referer: "https://www.k-dense.ai"
         X-Title: "Kady-Expert"
 
+  # ── Azure OpenAI wildcard ──
+  # Routes any `azure/<deployment>` id. Configure the API base/key/version
+  # in `kady_agent/.env` (`AZURE_OPENAI_*`).
+  - model_name: "azure/*"
+    litellm_params:
+      model: "azure/*"
+      api_base: os.environ/AZURE_OPENAI_API_BASE
+      api_key: os.environ/AZURE_OPENAI_API_KEY
+      api_version: os.environ/AZURE_OPENAI_API_VERSION
+      timeout: 600
+      stream_timeout: 600
+
+  # ── Azure AI (Foundry / Model Inference) wildcard ──
+  # Routes any `azure_ai/<deployment>` id. Configure `AZURE_AI_*` env vars.
+  - model_name: "azure_ai/*"
+    litellm_params:
+      model: "azure_ai/*"
+      api_base: os.environ/AZURE_AI_API_BASE
+      api_key: os.environ/AZURE_AI_API_KEY
+      api_version: os.environ/AZURE_AI_API_VERSION
+      timeout: 600
+      stream_timeout: 600
+
   # ── Local Ollama (no API key required) ──
   # Wildcard so any tag the user pulls into their Ollama server is routable
   # without editing this file. `ollama_chat/*` preserves the model name tag

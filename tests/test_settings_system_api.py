@@ -159,6 +159,25 @@ def test_system_health_config_and_ollama(client, monkeypatch: pytest.MonkeyPatch
     assert response.json()["models"][0]["id"] == "ollama/llama3"
 
 
+def test_system_azure_model_listing(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_API_BASE", "https://example.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "azure-openai-key")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENTS", "claude-sonnet-4-5, gpt-5-mini")
+    monkeypatch.setenv("AZURE_AI_API_BASE", "https://example.inference.ai.azure.com")
+    monkeypatch.setenv("AZURE_AI_API_KEY", "azure-ai-key")
+    monkeypatch.setenv("AZURE_AI_DEPLOYMENTS", "claude-sonnet-4-5")
+
+    response = client.get("/azure/models")
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["available"] is True
+    assert payload["configured"] == {"azure_openai": True, "azure_ai": True}
+    assert payload["models"][0]["id"] == "azure/claude-sonnet-4-5"
+    assert payload["models"][1]["id"] == "azure/gpt-5-mini"
+    assert payload["models"][2]["id"] == "azure_ai/claude-sonnet-4-5"
+
+
 def test_revision_validation_and_success(
     client, project_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

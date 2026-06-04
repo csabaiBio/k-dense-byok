@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 
 import httpx
 from fastapi import APIRouter
@@ -61,6 +62,47 @@ def _ollama_entry(tag: dict) -> dict:
     }
 
 
+def _parse_csv_values(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    out: list[str] = []
+    for part in raw.split(","):
+        value = part.strip()
+        if value:
+            out.append(value)
+    return out
+
+
+def _normalize_deployments(values: Iterable[str]) -> list[str]:
+    """Deduplicate deployment IDs while preserving user order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _azure_entry(prefix: str, deployment: str) -> dict:
+    """Map an Azure deployment id to the UI's Model shape."""
+    provider = "Azure AI" if prefix == "azure_ai" else "Azure OpenAI"
+    return {
+        "id": f"{prefix}/{deployment}",
+        "label": deployment,
+        "provider": provider,
+        "tier": "high",
+        "context_length": 0,
+        "pricing": {"prompt": 0.0, "completion": 0.0},
+        "modality": "text+image+file->text",
+        "description": (
+            "Azure-hosted deployment configured via environment variables. "
+            "Pricing is managed in your Azure subscription."
+        ),
+    }
+
+
 @router.get("/ollama/models")
 async def list_ollama_models():
     """Proxy to Ollama and map tags into the UI's Model shape."""
@@ -78,3 +120,37 @@ async def list_ollama_models():
     tags = data.get("models") or []
     entries = [_ollama_entry(t) for t in tags if isinstance(t, dict)]
     return {"available": True, "models": entries}
+
+
+@router.get("/azure/models")
+async def list_azure_models():
+    """Return Azure deployments configured for LiteLLM wildcard routing."""
+    azure_openai = _normalize_deployments(
+        _parse_csv_values(os.environ.get("AZURE_OPENAI_DEPLOYMENTS"))
+    )
+    azure_ai = _normalize_deployments(
+        _parse_csv_values(os.environ.get("AZURE_AI_DEPLOYMENTS"))
+    )
+
+    models = [
+        *[_azure_entry("azure", deployment) for deployment in azure_openai],
+        *[_azure_entry("azure_ai", deployment) for deployment in azure_ai],
+    ]
+
+    has_openai_config = bool(
+        os.environ.get("AZURE_OPENAI_API_BASE", "").strip()
+        and os.environ.get("AZURE_OPENAI_API_KEY", "").strip()
+    )
+    has_ai_config = bool(
+        os.environ.get("AZURE_AI_API_BASE", "").strip()
+        and os.environ.get("AZURE_AI_API_KEY", "").strip()
+    )
+
+    return {
+        "available": bool(models),
+        "configured": {
+            "azure_openai": has_openai_config,
+            "azure_ai": has_ai_config,
+        },
+        "models": models,
+    }

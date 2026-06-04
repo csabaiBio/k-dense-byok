@@ -33,6 +33,20 @@ PY
 
 By default, this includes all OpenRouter models with `tools` support, preserves the orchestrator and expert recommended defaults, and omits retired GPT-5.4 base/pro entries.
 
+## Azure-hosted models
+
+Kady also supports Azure-hosted deployments through LiteLLM wildcard routes:
+
+- `azure/<deployment>` for Azure OpenAI-compatible endpoints.
+- `azure_ai/<deployment>` for Azure AI Foundry / Inference endpoints.
+
+Configure the relevant API base/key/version and comma-separated deployment list in `kady_agent/.env`:
+
+- `AZURE_OPENAI_API_BASE`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENTS`
+- `AZURE_AI_API_BASE`, `AZURE_AI_API_KEY`, `AZURE_AI_API_VERSION`, `AZURE_AI_DEPLOYMENTS`
+
+After restart, these deployments appear in the model picker and can be used for both orchestrator and expert model selection.
+
 ## Defaults
 
 - The orchestrator default is `openrouter/anthropic/claude-opus-4.8`.

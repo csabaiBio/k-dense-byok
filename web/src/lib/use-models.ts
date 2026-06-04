@@ -13,9 +13,16 @@ interface OllamaListResponse {
   models?: Model[];
 }
 
+interface AzureListResponse {
+  available?: boolean;
+  models?: Model[];
+}
+
 export interface UseModelsReturn {
-  /** Every model available to the user: static OpenRouter catalogue + live Ollama tags. */
+  /** Every model available to the user: static OpenRouter catalogue + Azure + live Ollama tags. */
   models: Model[];
+  /** Azure deployments configured in env and routed via LiteLLM wildcards. */
+  azureModels: Model[];
   /** Just the Ollama-sourced entries, in the order returned by the backend. */
   ollamaModels: Model[];
   /** True when the backend was able to reach `OLLAMA_BASE_URL/api/tags`. */
@@ -25,16 +32,30 @@ export interface UseModelsReturn {
 }
 
 /**
- * Merge the static OpenRouter-derived `models.json` with whatever models
- * are currently pulled in the user's local Ollama server.
+ * Merge the static OpenRouter-derived `models.json` with Azure deployments
+ * configured in env and whatever models are currently pulled in the user's
+ * local Ollama server.
  *
  * Ollama discovery is best-effort: if the daemon is offline we silently
  * fall back to OpenRouter-only. The hook re-fetches on project change to
  * keep the list fresh when the user returns after pulling a new model.
  */
 export function useModels(): UseModelsReturn {
+  const [azureModels, setAzureModels] = useState<Model[]>([]);
   const [ollamaModels, setOllamaModels] = useState<Model[]>([]);
   const [ollamaAvailable, setOllamaAvailable] = useState(false);
+
+  const fetchAzure = useCallback(() => {
+    apiFetch("/azure/models")
+      .then((r) => (r.ok ? (r.json() as Promise<AzureListResponse>) : null))
+      .then((data) => {
+        if (!data) return;
+        setAzureModels(Array.isArray(data.models) ? data.models : []);
+      })
+      .catch(() => {
+        setAzureModels([]);
+      });
+  }, []);
 
   const fetchOllama = useCallback(() => {
     apiFetch("/ollama/models")
@@ -51,15 +72,26 @@ export function useModels(): UseModelsReturn {
   }, []);
 
   useEffect(() => {
+    fetchAzure();
     fetchOllama();
-  }, [fetchOllama]);
+  }, [fetchAzure, fetchOllama]);
 
-  useEffect(() => onProjectChange(() => fetchOllama()), [fetchOllama]);
+  useEffect(
+    () => onProjectChange(() => {
+      fetchAzure();
+      fetchOllama();
+    }),
+    [fetchAzure, fetchOllama]
+  );
 
   return {
-    models: [...OPENROUTER_MODELS, ...ollamaModels],
+    models: [...OPENROUTER_MODELS, ...azureModels, ...ollamaModels],
+    azureModels,
     ollamaModels,
     ollamaAvailable,
-    refresh: fetchOllama,
+    refresh: () => {
+      fetchAzure();
+      fetchOllama();
+    },
   };
 }
