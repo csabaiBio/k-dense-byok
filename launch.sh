@@ -8,6 +8,22 @@ echo "  Kady — Starting up"
 echo "============================================"
 echo
 
+# Best-effort: raise soft FD limit to reduce watcher failures on low-limit hosts.
+CURRENT_NOFILE="$(ulimit -Sn 2>/dev/null || echo 0)"
+HARD_NOFILE="$(ulimit -Hn 2>/dev/null || echo 0)"
+TARGET_NOFILE=65535
+if [[ "$HARD_NOFILE" =~ ^[0-9]+$ ]] && (( HARD_NOFILE > 0 && HARD_NOFILE < TARGET_NOFILE )); then
+  TARGET_NOFILE="$HARD_NOFILE"
+fi
+if [[ "$CURRENT_NOFILE" =~ ^[0-9]+$ ]] && (( CURRENT_NOFILE > 0 && CURRENT_NOFILE < TARGET_NOFILE )); then
+  if ulimit -Sn "$TARGET_NOFILE" 2>/dev/null; then
+    echo "Raised open file limit: $CURRENT_NOFILE -> $TARGET_NOFILE"
+  else
+    echo "Warning: could not raise open file limit (current: $CURRENT_NOFILE, hard: $HARD_NOFILE)."
+    echo "If you see fsnotify/EMFILE errors, increase limits (ulimit/sysctl) on this host."
+  fi
+fi
+
 # ---- Step 3: Load environment variables ----
 
 echo "Loading environment from kady_agent/.env..."
