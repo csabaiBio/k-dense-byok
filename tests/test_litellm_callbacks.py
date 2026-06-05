@@ -98,18 +98,18 @@ def test_sanitize_sampling_params_for_azure_models() -> None:
     assert "top_p" not in payload
 
 
-def test_sanitize_sampling_params_noop_when_single_param() -> None:
+def test_sanitize_sampling_params_noop_when_no_top_p() -> None:
     import litellm_callbacks
 
     payload = {
-        "model": "azure_ai/claude-sonnet-4-5",
+        "model": "claude-sonnet-4-5",
         "temperature": 0.3,
     }
     changed = litellm_callbacks._sanitize_sampling_params(payload)
 
     assert changed is False
     assert payload == {
-        "model": "azure_ai/claude-sonnet-4-5",
+        "model": "claude-sonnet-4-5",
         "temperature": 0.3,
     }
 
@@ -124,8 +124,47 @@ def test_sanitize_sampling_params_noop_for_non_azure() -> None:
     }
     changed = litellm_callbacks._sanitize_sampling_params(payload)
 
-    assert changed is False
-    assert payload["top_p"] == 0.95
+    assert changed is True
+    assert "top_p" not in payload
+
+
+def test_sanitize_sampling_params_nested_payload_shape() -> None:
+    import litellm_callbacks
+
+    payload = {
+        "model_group": "azure_ai/claude-sonnet-4-5",
+        "request": {
+            "generation_config": {"temperature": 0.2, "top_p": 0.9},
+            "optional_params": {"top_p": 0.95},
+        },
+    }
+
+    changed = litellm_callbacks._sanitize_sampling_params(
+        payload, model_hint="azure_ai/claude-sonnet-4-5"
+    )
+
+    assert changed is True
+    assert payload["request"]["generation_config"]["temperature"] == 0.2
+    assert "top_p" not in payload["request"]["generation_config"]
+    assert "top_p" not in payload["request"]["optional_params"]
+
+
+def test_drop_top_p_removes_nested_entries() -> None:
+    import litellm_callbacks
+
+    payload = {
+        "top_p": 0.9,
+        "optional_params": {
+            "top_p": 0.95,
+            "inner": [{"top_p": 0.2}, {"keep": True}],
+        },
+    }
+
+    litellm_callbacks._drop_top_p(payload)
+
+    assert "top_p" not in payload
+    assert "top_p" not in payload["optional_params"]
+    assert "top_p" not in payload["optional_params"]["inner"][0]
 
 
 def test_proxy_callback_records_expert_cost(active_project: str) -> None:

@@ -407,8 +407,8 @@ def _pricing_tier(prompt_price: float) -> str:
 
 def update_models_json(
     output_path: str = "web/src/data/models.json",
-    default_model_id: str = "anthropic/claude-opus-4.8",
-    expert_default_model_id: str = "google/gemini-3.5-flash",
+    default_model_id: str = "claude-sonnet-4-5",
+    expert_default_model_id: str = "claude-sonnet-4-5",
     max_age_days: int | None = None,
     supported_parameters: str | None = "tools",
     excluded_model_ids: set[str] | None = None,

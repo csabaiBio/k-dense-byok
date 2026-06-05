@@ -47,6 +47,17 @@ Configure the relevant API base/key/version and comma-separated deployment list 
 
 After restart, these deployments appear in the model picker and can be used for both orchestrator and expert model selection.
 
+### Azure-only picker mode
+
+If you want the UI dropdown to show only Azure deployments, set these in `kady_agent/.env`:
+
+```bash
+NEXT_PUBLIC_ENABLE_OPENROUTER_MODELS=0
+NEXT_PUBLIC_ENABLE_OLLAMA_MODELS=0
+```
+
+These flags control model visibility in the frontend picker only. Routing still follows your LiteLLM config.
+
 ## Defaults
 
 - The orchestrator default is `openrouter/anthropic/claude-opus-4.8`.

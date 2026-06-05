@@ -220,7 +220,7 @@ def _model_rejects_temperature_and_top_p(model: Any) -> bool:
     if not isinstance(model, str):
         return False
     lowered = model.lower()
-    return "claude" in lowered 
+    return lowered.startswith("azure_ai/") or lowered.startswith("azure/")
 
 
 def _read_sampling_param(payload: dict[str, Any], key: str) -> Any:
@@ -241,35 +241,44 @@ def _read_sampling_param(payload: dict[str, Any], key: str) -> Any:
     return None
 
 
-def _drop_top_p(payload: dict[str, Any]) -> None:
-    """Drop ``top_p`` from all known request containers."""
-    payload.pop("top_p", None)
-    optional = payload.get("optional_params")
-    if isinstance(optional, dict):
-        optional.pop("top_p", None)
-    generation = payload.get("generation_config")
-    if isinstance(generation, dict):
-        generation.pop("top_p", None)
+def _has_sampling_param(payload: Any, key: str) -> bool:
+    """Return True when ``key`` appears with a non-None value anywhere."""
+    if isinstance(payload, dict):
+        if payload.get(key) is not None:
+            return True
+        for value in payload.values():
+            if _has_sampling_param(value, key):
+                return True
+    elif isinstance(payload, list):
+        for item in payload:
+            if _has_sampling_param(item, key):
+                return True
+    return False
+
+
+def _drop_top_p(payload: Any) -> None:
+    """Drop ``top_p`` from nested request containers."""
+    if isinstance(payload, dict):
+        payload.pop("top_p", None)
+        for value in payload.values():
+            _drop_top_p(value)
+    elif isinstance(payload, list):
+        for item in payload:
+            _drop_top_p(item)
 
 
 def _sanitize_sampling_params(payload: dict[str, Any], model_hint: Any = None) -> bool:
-    """Normalize sampling params for providers that forbid temp+top_p together.
+    """Strip ``top_p`` globally from outbound LiteLLM payloads.
 
     Returns True when the payload was modified.
     """
     if not isinstance(payload, dict):
         return False
-    model = payload.get("model") or model_hint
-    if not _model_rejects_temperature_and_top_p(model):
+    if not _has_sampling_param(payload, "top_p"):
         return False
 
-    temperature = _read_sampling_param(payload, "temperature")
-    top_p = _read_sampling_param(payload, "top_p")
-    if temperature is None or top_p is None:
-        return False
-
-    # Keep explicit temperature and drop top_p to satisfy Anthropic-on-Azure
-    # deployments that reject setting both simultaneously.
+    # Temporary global policy: drop top_p everywhere to avoid provider-specific
+    # incompatibilities while preserving temperature behavior.
     _drop_top_p(payload)
     return True
 
@@ -333,7 +342,8 @@ class OpenRouterPrefixFix(CustomLogger):
     def log_pre_api_call(self, model, messages, kwargs):  # type: ignore[no-untyped-def]
         if isinstance(kwargs, dict) and _sanitize_sampling_params(kwargs, model_hint=model):
             logger.debug(
-                "Sanitized sampling params for model %s: dropped top_p", kwargs.get("model")
+                "Sanitized sampling params for model %s: removed top_p",
+                kwargs.get("model") or model,
             )
 
     async def async_pre_call_hook(  # type: ignore[no-untyped-def]

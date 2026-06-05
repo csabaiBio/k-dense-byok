@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import Request
 
 from google.adk.auth.credential_service.in_memory_credential_service import (
@@ -68,8 +70,24 @@ _adk_web_server = AdkWebServer(
     auto_create_session=True,
 )
 
+
+def _cors_allow_origins() -> list[str]:
+    """Resolve CORS origins for local frontend development.
+
+    Override with a comma-separated ``CORS_ALLOW_ORIGINS`` env var.
+    """
+    raw = os.environ.get("CORS_ALLOW_ORIGINS", "").strip()
+    if raw:
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ]
+
 app = _adk_web_server.get_fast_api_app(
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_cors_allow_origins(),
 )
 
 

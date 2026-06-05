@@ -111,7 +111,7 @@ These guides live in the [`docs/`](./docs) folder:
 - AutoResearch integration
 - And much more
 
-Recently completed: Paperclip MCP for biomedical literature and clinical trials, updated default models (Claude Opus 4.8 orchestrator, Gemini 3.5 Flash expert), tabbed chats (up to 10 parallel sessions per project), Ollama local model support, and MCP server configuration in the UI.
+Recently completed: Paperclip MCP for biomedical literature and clinical trials, updated default models (Claude  4.8 orchestrator, Gemini 3.5 Flash expert), tabbed chats (up to 10 parallel sessions per project), Ollama local model support, and MCP server configuration in the UI.
 
 ## Want more?
 

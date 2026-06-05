@@ -89,7 +89,7 @@ def _azure_entry(prefix: str, deployment: str) -> dict:
     """Map an Azure deployment id to the UI's Model shape."""
     provider = "Azure AI" if prefix == "azure_ai" else "Azure OpenAI"
     return {
-        "id": f"{prefix}/{deployment}",
+        "id": f"{deployment}",
         "label": deployment,
         "provider": provider,
         "tier": "high",

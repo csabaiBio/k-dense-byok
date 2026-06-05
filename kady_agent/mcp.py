@@ -410,7 +410,9 @@ def browser_use_config_path() -> Path:
 
 
 DEFAULT_BROWSER_USE_CONFIG: dict = {
-    "enabled": True,
+    # Disabled by default: auto-starting browser-use on every turn can stall
+    # text-only chats when the MCP dependency is unavailable.
+    "enabled": False,
     "headed": False,
     "profile": None,
     "session": None,
@@ -753,12 +755,30 @@ class ResilientMcpToolset(BaseToolset):
         )
         self._inner = inner
         self._label = label
+        try:
+            self._get_tools_timeout = float(
+                os.getenv("KADY_MCP_GET_TOOLS_TIMEOUT", "8")
+            )
+        except ValueError:
+            self._get_tools_timeout = 8.0
 
     async def get_tools(
         self, readonly_context: Optional[ReadonlyContext] = None
     ) -> List[BaseTool]:
         try:
-            return await self._inner.get_tools(readonly_context)
+            if self._get_tools_timeout <= 0:
+                return await self._inner.get_tools(readonly_context)
+            return await asyncio.wait_for(
+                self._inner.get_tools(readonly_context),
+                timeout=self._get_tools_timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                "%s tool discovery timed out after %.1fs; skipping its tools",
+                self._label,
+                self._get_tools_timeout,
+            )
+            return []
         except Exception as exc:
             logger.warning("%s unavailable, skipping its tools: %s", self._label, exc)
             return []

@@ -7,6 +7,10 @@ import type { Model } from "@/components/model-selector";
 import { apiFetch, onProjectChange } from "@/lib/projects";
 
 const OPENROUTER_MODELS = staticModels as Model[];
+const ENABLE_OPENROUTER_MODELS =
+  process.env.NEXT_PUBLIC_ENABLE_OPENROUTER_MODELS !== "0";
+const ENABLE_OLLAMA_MODELS =
+  process.env.NEXT_PUBLIC_ENABLE_OLLAMA_MODELS !== "0";
 
 interface OllamaListResponse {
   available?: boolean;
@@ -19,7 +23,7 @@ interface AzureListResponse {
 }
 
 export interface UseModelsReturn {
-  /** Every model available to the user: static OpenRouter catalogue + Azure + live Ollama tags. */
+  /** Every model available to the user after applying visibility flags. */
   models: Model[];
   /** Azure deployments configured in env and routed via LiteLLM wildcards. */
   azureModels: Model[];
@@ -85,13 +89,19 @@ export function useModels(): UseModelsReturn {
   );
 
   return {
-    models: [...OPENROUTER_MODELS, ...azureModels, ...ollamaModels],
+    models: [
+      ...(ENABLE_OPENROUTER_MODELS ? OPENROUTER_MODELS : []),
+      ...azureModels,
+      ...(ENABLE_OLLAMA_MODELS ? ollamaModels : []),
+    ],
     azureModels,
     ollamaModels,
-    ollamaAvailable,
+    ollamaAvailable: ENABLE_OLLAMA_MODELS && ollamaAvailable,
     refresh: () => {
       fetchAzure();
-      fetchOllama();
+      if (ENABLE_OLLAMA_MODELS) {
+        fetchOllama();
+      }
     },
   };
 }
