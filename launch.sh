@@ -37,7 +37,8 @@ echo "  → Backend on port 8181 (FastAPI + ADK agent)"
 # (done by the Gemini CLI subprocess during delegate_task) do NOT cause
 # uvicorn to shut down mid-stream and stall /sandbox/* endpoints.
 # Note: edits to server.py require a manual restart of this script.
-uv run uvicorn server:app --reload --reload-dir kady_agent --port 8181 &
+#uv run uvicorn server:app --reload --reload-dir kady_agent --port 8181 &
+uv run uvicorn server:app --port 8181 &
 BACKEND_PID=$!
 
 echo "  → Frontend on port 3000 (Next.js UI)"
