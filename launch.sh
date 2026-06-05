@@ -15,6 +15,25 @@ set -a
 source kady_agent/.env
 set +a
 
+normalize_frontend_prefix() {
+  local raw="$1"
+  raw="${raw%/}"
+  if [[ -z "$raw" || "$raw" == "/" ]]; then
+    echo ""
+  elif [[ "$raw" == /* ]]; then
+    echo "$raw"
+  else
+    echo "/$raw"
+  fi
+}
+
+FRONTEND_PREFIX="$(normalize_frontend_prefix "${FRONTEND_URL_PREFIX:-}")"
+if [[ -n "${FRONTEND_URL:-}" ]]; then
+  UI_URL="$FRONTEND_URL"
+else
+  UI_URL="http://localhost:3000${FRONTEND_PREFIX}"
+fi
+
 # ---- Step 4: Prepare the sandbox ----
 
 echo "Preparing sandbox (creates sandbox/ dir, downloads scientific skills from K-Dense)..."
@@ -42,13 +61,19 @@ uv run uvicorn server:app --port 8181 &
 BACKEND_PID=$!
 
 echo "  → Frontend on port 3000 (Next.js UI)"
-cd web && npm run dev &
+(
+  cd web
+  NEXT_TELEMETRY_DISABLED="${NEXT_TELEMETRY_DISABLED:-1}" \
+  WATCHPACK_POLLING="${WATCHPACK_POLLING:-true}" \
+  WATCHPACK_POLLING_INTERVAL="${WATCHPACK_POLLING_INTERVAL:-1000}" \
+  npm run dev --host
+) &
 FRONTEND_PID=$!
 
 echo
 echo "============================================"
 echo "  All services running!"
-echo "  UI: http://localhost:3000"
+echo "  UI: $UI_URL"
 if command -v open &>/dev/null || command -v xdg-open &>/dev/null; then
   echo "  Opening that URL in your default browser in a few seconds…"
 fi
@@ -59,9 +84,9 @@ echo "============================================"
 (
   sleep 3
   if command -v open &>/dev/null; then
-    open "http://localhost:3000"
+    open "$UI_URL"
   elif command -v xdg-open &>/dev/null; then
-    xdg-open "http://localhost:3000" &>/dev/null
+    xdg-open "$UI_URL" &>/dev/null
   fi
 ) &
 

@@ -12,10 +12,47 @@ function readVersionFromPyproject(): string {
   }
 }
 
+function normalizePathPrefix(raw?: string): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "/") return "";
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeadingSlash.replace(/\/+$/, "");
+}
+
+function readPrefixFromFrontendUrl(raw?: string): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    return normalizePathPrefix(parsed.pathname);
+  } catch {
+    return "";
+  }
+}
+
+function resolveFrontendUrlPrefix(): string {
+  const explicit = normalizePathPrefix(process.env.FRONTEND_URL_PREFIX);
+  if (explicit) return explicit;
+  return readPrefixFromFrontendUrl(process.env.FRONTEND_URL);
+}
+
+const frontendUrlPrefix = resolveFrontendUrlPrefix();
+const frontendUrl = process.env.FRONTEND_URL?.trim() || `http://localhost:3000${frontendUrlPrefix}`;
+
 const nextConfig: NextConfig = {
   devIndicators: false,
+  ...(frontendUrlPrefix
+    ? {
+        basePath: frontendUrlPrefix,
+        assetPrefix: frontendUrlPrefix,
+      }
+    : {}),
   env: {
     NEXT_PUBLIC_APP_VERSION: readVersionFromPyproject(),
+    NEXT_PUBLIC_FRONTEND_URL: frontendUrl,
+    NEXT_PUBLIC_FRONTEND_URL_PREFIX: frontendUrlPrefix,
   },
 };
 
