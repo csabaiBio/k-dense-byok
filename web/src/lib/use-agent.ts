@@ -80,7 +80,7 @@ type AgentEvent = {
   };
 };
 
-const truncateText = (value: unknown, max = 120) => {
+const truncateText = (value: unknown, max = 12000) => {
   if (typeof value !== "string") return undefined;
   const compact = value.replace(/\s+/g, " ").trim();
   if (!compact) return undefined;

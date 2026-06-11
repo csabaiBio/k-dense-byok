@@ -5,6 +5,7 @@ import os
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from google.adk.tools.tool_context import ToolContext
@@ -41,6 +42,30 @@ DEFAULT_EXPERT_MODEL = (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_gateway_base_url(raw: str | None) -> str | None:
+    """Return a Gemini-CLI-acceptable base URL or None when empty/invalid.
+
+    The CLI requires a fully-qualified URL for GOOGLE_GEMINI_BASE_URL.
+    Some host environments provide a schemeless value ("host/path"), which
+    the CLI rejects with "Invalid custom base URL". Normalize those to HTTPS.
+    """
+    if raw is None:
+        return None
+    value = str(raw).strip().strip('"').strip("'")
+    if not value:
+        return None
+    if any(ch.isspace() for ch in value):
+        return None
+    if value.startswith("//"):
+        value = f"https:{value}"
+    elif "://" not in value:
+        value = f"https://{value}"
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return value
 
 
 def _cli_can_route(model: str) -> bool:
@@ -143,6 +168,16 @@ def _base_cli_env() -> dict[str, str]:
     env = os.environ.copy()
     for var in _VERTEX_AI_ENV_VARS:
         env.pop(var, None)
+    normalized_base_url = _normalize_gateway_base_url(env.get("GOOGLE_GEMINI_BASE_URL"))
+    if normalized_base_url is None:
+        env.pop("GOOGLE_GEMINI_BASE_URL", None)
+    else:
+        if env.get("GOOGLE_GEMINI_BASE_URL") != normalized_base_url:
+            logger.warning(
+                "Normalized GOOGLE_GEMINI_BASE_URL for Gemini CLI gateway mode: %s",
+                normalized_base_url,
+            )
+        env["GOOGLE_GEMINI_BASE_URL"] = normalized_base_url
     env["GEMINI_CLI_TRUSTED_FOLDERS_PATH"] = str(ensure_gemini_trust_file())
     return env
 

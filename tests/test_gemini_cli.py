@@ -239,3 +239,42 @@ def test_apply_sandbox_venv_prefers_local_venv(tmp_path, monkeypatch: pytest.Mon
     assert env["VIRTUAL_ENV"] == str(cwd / ".venv")
     assert env["PATH"].split(os.pathsep)[0] == str(cwd / ".venv" / "bin")
     assert "/outer/bin" not in env["PATH"].split(os.pathsep)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("https://example.com/litellm", "https://example.com/litellm"),
+        ("http://example.com/litellm", "http://example.com/litellm"),
+        ("example.com/litellm", "https://example.com/litellm"),
+        ("//example.com/litellm", "https://example.com/litellm"),
+        ("  'example.com/litellm'  ", "https://example.com/litellm"),
+    ],
+)
+def test_normalize_gateway_base_url(raw: str, expected: str) -> None:
+    from kady_agent.tools import gemini_cli
+
+    assert gemini_cli._normalize_gateway_base_url(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["", "not a url", "https:///missing-host"],
+)
+def test_normalize_gateway_base_url_invalid(raw: str) -> None:
+    from kady_agent.tools import gemini_cli
+
+    assert gemini_cli._normalize_gateway_base_url(raw) is None
+
+
+def test_base_cli_env_normalizes_google_gemini_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from kady_agent.tools import gemini_cli
+
+    monkeypatch.setenv("GOOGLE_GEMINI_BASE_URL", "k8plex-veo.vo.elte.hu/notebook/wfct0p-jupy/litellm")
+
+    env = gemini_cli._base_cli_env()
+
+    assert (
+        env["GOOGLE_GEMINI_BASE_URL"]
+        == "https://k8plex-veo.vo.elte.hu/notebook/wfct0p-jupy/litellm"
+    )
