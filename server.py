@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 
 from fastapi import Request
 
@@ -86,9 +87,48 @@ def _cors_allow_origins() -> list[str]:
         "http://127.0.0.1:3001",
     ]
 
+
+def _normalize_path_prefix(raw: str) -> str:
+    value = (raw or "").strip()
+    if not value or value == "/":
+        return ""
+    if "://" in value:
+        value = urlparse(value).path or ""
+    if not value:
+        return ""
+    if not value.startswith("/"):
+        value = f"/{value}"
+    return value.rstrip("/")
+
+
+def _configured_backend_prefix() -> str:
+    # Accept either a clean path prefix or a full URL and normalize to a path.
+    return _normalize_path_prefix(os.environ.get("BACKEND_URL_PREFIX", ""))
+
 app = _adk_web_server.get_fast_api_app(
     allow_origins=_cors_allow_origins(),
 )
+
+
+# ---------------------------------------------------------------------------
+
+
+@app.middleware("http")
+async def strip_proxy_prefix(request: Request, call_next):
+    prefix = _configured_backend_prefix()
+    if prefix:
+        path = request.scope.get("path") or ""
+        if path == prefix or path.startswith(f"{prefix}/"):
+            stripped_path = path[len(prefix) :] or "/"
+            request.scope["path"] = stripped_path
+
+            raw_path = request.scope.get("raw_path")
+            if isinstance(raw_path, (bytes, bytearray)):
+                prefix_bytes = prefix.encode("utf-8")
+                if raw_path == prefix_bytes or raw_path.startswith(prefix_bytes + b"/"):
+                    request.scope["raw_path"] = raw_path[len(prefix_bytes) :] or b"/"
+
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------

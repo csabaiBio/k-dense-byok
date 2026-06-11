@@ -81,9 +81,9 @@ echo "Starting services..."
 echo
 
 echo "  → LiteLLM proxy on port 4000 (routes LLM calls to OpenRouter)"
-uv run litellm --config litellm_config.yaml --port 4000 &
-LITELLM_PID=$!
-sleep 2
+#uv run litellm --config litellm_config.yaml --port 4000 &
+#LITELLM_PID=$!
+#sleep 2
 
 echo "  → Backend on port 8181 (FastAPI + ADK agent)"
 # Restrict the reload watcher to kady_agent/ so that writes inside sandbox/
@@ -92,6 +92,7 @@ echo "  → Backend on port 8181 (FastAPI + ADK agent)"
 # Note: edits to server.py require a manual restart of this script.
 #uv run uvicorn server:app --reload --reload-dir kady_agent --port 8181 &
 BACKEND_UVICORN_ARGS=(
+  --host 0.0.0.0
   --port 8181
   --proxy-headers
   --forwarded-allow-ips='*'
