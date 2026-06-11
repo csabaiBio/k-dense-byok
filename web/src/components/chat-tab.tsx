@@ -29,6 +29,7 @@ import {
   PairedModelSelector,
   DEFAULT_MODEL,
   DEFAULT_EXPERT_MODEL,
+  resolveModelById,
   type Model,
 } from "@/components/model-selector";
 import { buildSkillsContext, type Skill } from "@/components/skills-selector";
@@ -861,6 +862,8 @@ export interface ChatTabHandle {
 export interface ChatTabProps {
   tabId: string;
   isActive: boolean;
+  defaultAgentModelId: string | null;
+  defaultExpertModelId: string | null;
   // Shared sandbox/state passed in (one instance for the whole project)
   allFiles: string[];
   uploadFiles: (files: FileList | File[], paths?: string[]) => Promise<string[]>;
@@ -878,6 +881,8 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
   {
     tabId,
     isActive,
+    defaultAgentModelId,
+    defaultExpertModelId,
     allFiles,
     uploadFiles,
     onSandboxRefresh,
@@ -906,8 +911,12 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
   const prevMessageCount = useRef(0);
 
   // Per-tab settings
-  const [selectedModel, setSelectedModel] = useState<Model>(DEFAULT_MODEL);
-  const [selectedExpertModel, setSelectedExpertModel] = useState<Model>(DEFAULT_EXPERT_MODEL);
+  const [selectedModel, setSelectedModel] = useState<Model>(() =>
+    resolveModelById(defaultAgentModelId, DEFAULT_MODEL),
+  );
+  const [selectedExpertModel, setSelectedExpertModel] = useState<Model>(() =>
+    resolveModelById(defaultExpertModelId, DEFAULT_EXPERT_MODEL),
+  );
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [selectedDbs, setSelectedDbs] = useState<Database[]>([]);
   const [selectedCompute, setSelectedCompute] = useState<ModalInstance | null>(null);
@@ -937,6 +946,25 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
 
   const activeAssistantId =
     [...messages].reverse().find((message) => message.role === "assistant")?.id ?? null;
+
+  useEffect(() => {
+    setSelectedModel((prev) => {
+      if (prev.id !== DEFAULT_MODEL.id) return prev;
+      return resolveModelById(defaultAgentModelId, DEFAULT_MODEL);
+    });
+  }, [defaultAgentModelId]);
+
+  useEffect(() => {
+    setSelectedExpertModel((prev) => {
+      if (prev.id !== DEFAULT_EXPERT_MODEL.id) return prev;
+      return resolveModelById(defaultExpertModelId, DEFAULT_EXPERT_MODEL);
+    });
+  }, [defaultExpertModelId]);
+
+  const effectiveDefaultExpertModel = useMemo(
+    () => resolveModelById(defaultExpertModelId, DEFAULT_EXPERT_MODEL),
+    [defaultExpertModelId],
+  );
 
   // Auto-refresh sandbox tree when this tab finishes a turn
   useEffect(() => {
@@ -1075,7 +1103,7 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
       launchWorkflow: async (prompt, model, compute, suggestedSkills, uploadedFiles) => {
         if (budgetState === "exceeded") return;
         setSelectedModel(model);
-        setSelectedExpertModel(DEFAULT_EXPERT_MODEL);
+        setSelectedExpertModel(effectiveDefaultExpertModel);
         setSelectedCompute(compute);
         const fileRefs = uploadedFiles.length > 0 ? "\n" + uploadedFiles.join("\n") : "";
         const computeCtx = buildComputeContext(compute);
@@ -1084,7 +1112,7 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
           : "";
         const fullPrompt = prompt + fileRefs + computeCtx + skillsCtx;
         const msgId = await send(fullPrompt, model.id, {
-          expertModel: DEFAULT_EXPERT_MODEL.id,
+          expertModel: effectiveDefaultExpertModel.id,
           attachments: uploadedFiles,
           skills: suggestedSkills,
           databases: [],
@@ -1093,7 +1121,7 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
         if (msgId) {
           recordTurnMeta(msgId, {
             model: model.label,
-            expertModel: DEFAULT_EXPERT_MODEL.label,
+            expertModel: effectiveDefaultExpertModel.label,
             databases: [],
             compute: compute?.label ?? null,
             skills: suggestedSkills,
@@ -1103,7 +1131,15 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
         }
       },
     }),
-    [send, stop, budgetState, selectedModel.id, selectedExpertModel.id, recordTurnMeta],
+    [
+      send,
+      stop,
+      budgetState,
+      selectedModel.id,
+      selectedExpertModel.id,
+      recordTurnMeta,
+      effectiveDefaultExpertModel,
+    ],
   );
 
   // Background tabs stay mounted (so streaming + queue auto-send continue,

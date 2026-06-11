@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIcon,
   AtomIcon,
@@ -99,7 +99,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ModelSelector, type Model, DEFAULT_MODEL } from "@/components/model-selector";
+import {
+  ModelSelector,
+  type Model,
+  DEFAULT_MODEL,
+  resolveModelById,
+} from "@/components/model-selector";
 import { ComputeSelector, type ModalInstance } from "@/components/compute-selector";
 import workflowsData from "@/data/workflows.json";
 
@@ -286,6 +291,7 @@ function LaunchDialog({
   onOpenChange,
   onLaunch,
   onUploadFiles,
+  defaultAgentModelId,
   modalConfigured,
   budgetBlocked = false,
 }: {
@@ -294,10 +300,13 @@ function LaunchDialog({
   onOpenChange: (open: boolean) => void;
   onLaunch: (prompt: string, model: Model, compute: ModalInstance | null, suggestedSkills: string[], uploadedFiles: string[]) => void;
   onUploadFiles?: (files: FileList | File[], paths?: string[]) => Promise<string[]>;
+  defaultAgentModelId: string | null;
   modalConfigured: boolean;
   budgetBlocked?: boolean;
 }) {
-  const [model, setModel] = useState<Model>(DEFAULT_MODEL);
+  const [model, setModel] = useState<Model>(() =>
+    resolveModelById(defaultAgentModelId, DEFAULT_MODEL),
+  );
   const [compute, setCompute] = useState<ModalInstance | null>(null);
   const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
@@ -338,6 +347,11 @@ function LaunchDialog({
     .every((ph) => placeholderValues[ph.key]?.trim());
 
   const finalPrompt = editedPrompt ?? assembledPrompt;
+
+  useEffect(() => {
+    if (model.id !== DEFAULT_MODEL.id) return;
+    setModel(resolveModelById(defaultAgentModelId, DEFAULT_MODEL));
+  }, [defaultAgentModelId, model.id]);
 
   const handleLaunch = useCallback(() => {
     onLaunch(finalPrompt, model, compute, workflow.suggestedSkills, uploadedFiles);
@@ -528,11 +542,13 @@ function LaunchDialog({
 export function WorkflowsPanel({
   onLaunch,
   onUploadFiles,
+  defaultAgentModelId,
   modalConfigured,
   budgetBlocked = false,
 }: {
   onLaunch: (prompt: string, model: Model, compute: ModalInstance | null, suggestedSkills: string[], uploadedFiles: string[]) => void;
   onUploadFiles?: (files: FileList | File[], paths?: string[]) => Promise<string[]>;
+  defaultAgentModelId: string | null;
   modalConfigured: boolean;
   budgetBlocked?: boolean;
 }) {
@@ -667,6 +683,7 @@ export function WorkflowsPanel({
           }}
           onLaunch={onLaunch}
           onUploadFiles={onUploadFiles}
+          defaultAgentModelId={defaultAgentModelId}
           modalConfigured={modalConfigured}
           budgetBlocked={budgetBlocked}
         />

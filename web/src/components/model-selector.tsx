@@ -41,6 +41,31 @@ const DEFAULT_MODEL = STATIC_MODELS.find((m) => m.default) ?? STATIC_MODELS[0];
 const DEFAULT_EXPERT_MODEL =
   STATIC_MODELS.find((m) => m.expertDefault) ?? DEFAULT_MODEL;
 
+function providerFromModelId(id: string): string {
+  if (id.startsWith("azure_ai/")) return "Azure AI";
+  if (id.startsWith("azure/")) return "Azure OpenAI";
+  if (id.startsWith("ollama/")) return "Ollama";
+  if (id.startsWith("openrouter/")) return "OpenRouter";
+  return "Custom";
+}
+
+export function resolveModelById(
+  modelId: string | null | undefined,
+  fallback: Model,
+): Model {
+  const id = (modelId ?? "").trim();
+  if (!id) return fallback;
+  const matched = STATIC_MODELS.find((m) => m.id === id);
+  if (matched) return matched;
+  return {
+    ...fallback,
+    id,
+    label: id,
+    provider: providerFromModelId(id),
+    description: "Configured via environment variable.",
+  };
+}
+
 const TIER_STYLES: Record<string, { dot: string; badge: string }> = {
   budget:   { dot: "bg-slate-400",  badge: "text-slate-500 dark:text-slate-400" },
   mid:      { dot: "bg-sky-400",    badge: "text-sky-600 dark:text-sky-400" },

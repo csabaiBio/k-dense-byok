@@ -599,6 +599,8 @@ export default function ChatPage() {
               ref={getTabRefCallback(t.id)}
               tabId={t.id}
               isActive={view === "chat" && t.id === activeTabId}
+              defaultAgentModelId={config.defaultAgentModelId}
+              defaultExpertModelId={config.defaultExpertModelId}
               allFiles={allFiles}
               uploadFiles={sandbox.uploadFiles}
               onSandboxRefresh={handleSandboxRefresh}
@@ -618,6 +620,7 @@ export default function ChatPage() {
               <WorkflowsPanel
                 onLaunch={handleWorkflowLaunch}
                 onUploadFiles={sandbox.uploadFiles}
+                defaultAgentModelId={config.defaultAgentModelId}
                 modalConfigured={config.modalConfigured}
                 budgetBlocked={projectCost.budget.state === "exceeded"}
               />

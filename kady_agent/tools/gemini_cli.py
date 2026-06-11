@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -38,6 +39,8 @@ DEFAULT_EXPERT_MODEL = (
     os.getenv("DEFAULT_EXPERT_MODEL")
     or "openrouter/google/gemini-3.5-flash"
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _cli_can_route(model: str) -> bool:
@@ -246,6 +249,14 @@ def _cli_failure_response(error: Exception, selected_model: Optional[str]) -> di
     }
 
 
+def _should_retry_with_default_model(error: Exception, selected_model: Optional[str]) -> bool:
+    """Return True when we should retry once with the recommended model."""
+    if not selected_model or selected_model == DEFAULT_EXPERT_MODEL:
+        return False
+    message = str(error).lower()
+    return "yolo mode" in message
+
+
 async def _run_gemini_cli(cli_args: list[str], cwd: Path, env: dict[str, str]) -> tuple[str, int]:
     """Execute Gemini CLI and return raw stdout plus duration in milliseconds."""
     started_at = time.time()
@@ -374,12 +385,31 @@ async def delegate_task(
     # carry the current bearer. Cheap (a couple of file writes) and means
     # the user never sees a 401 from a signed-in MCP just because its
     # access_token rolled over between turns.
-    await refresh_oauth_tokens()
-    write_merged_settings(paths.gemini_settings_dir)
+    try:
+        await refresh_oauth_tokens()
+        write_merged_settings(paths.gemini_settings_dir)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to prepare Gemini CLI settings: %s", exc)
+        return _cli_failure_response(exc, selected_model)
 
     try:
         raw, duration_ms = await _run_gemini_cli(cli_args, cwd, env)
     except RuntimeError as exc:
+        if _should_retry_with_default_model(exc, selected_model):
+            logger.warning(
+                "Gemini CLI rejected model '%s' with YOLO-mode error; retrying with default model '%s'",
+                selected_model,
+                DEFAULT_EXPERT_MODEL,
+            )
+            fallback_args = _build_cli_args(expert_prompt, DEFAULT_EXPERT_MODEL)
+            try:
+                raw, duration_ms = await _run_gemini_cli(fallback_args, cwd, env)
+                selected_model = DEFAULT_EXPERT_MODEL
+            except Exception as retry_exc:  # noqa: BLE001
+                return _cli_failure_response(retry_exc, selected_model)
+        else:
+            return _cli_failure_response(exc, selected_model)
+    except Exception as exc:  # noqa: BLE001
         return _cli_failure_response(exc, selected_model)
     result = _parse_stream_json(raw)
 

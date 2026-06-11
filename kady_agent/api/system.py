@@ -19,8 +19,12 @@ async def config():
     """Expose non-secret feature flags to the frontend."""
     modal_id = os.environ.get("MODAL_TOKEN_ID", "").strip()
     modal_secret = os.environ.get("MODAL_TOKEN_SECRET", "").strip()
+    default_agent_model = os.environ.get("DEFAULT_AGENT_MODEL", "").strip() or None
+    default_expert_model = os.environ.get("DEFAULT_EXPERT_MODEL", "").strip() or None
     return {
         "modal_configured": bool(modal_id and modal_secret),
+        "default_agent_model": default_agent_model,
+        "default_expert_model": default_expert_model,
     }
 
 

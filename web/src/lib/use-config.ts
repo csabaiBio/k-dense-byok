@@ -6,9 +6,15 @@ import { apiFetch } from "@/lib/projects";
 
 export interface AppConfig {
   modalConfigured: boolean;
+  defaultAgentModelId: string | null;
+  defaultExpertModelId: string | null;
 }
 
-const DEFAULT_CONFIG: AppConfig = { modalConfigured: false };
+const DEFAULT_CONFIG: AppConfig = {
+  modalConfigured: false,
+  defaultAgentModelId: null,
+  defaultExpertModelId: null,
+};
 
 export function useConfig(): AppConfig {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
@@ -19,7 +25,17 @@ export function useConfig(): AppConfig {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data) {
-          setConfig({ modalConfigured: !!data.modal_configured });
+          setConfig({
+            modalConfigured: !!data.modal_configured,
+            defaultAgentModelId:
+              typeof data.default_agent_model === "string"
+                ? data.default_agent_model
+                : null,
+            defaultExpertModelId:
+              typeof data.default_expert_model === "string"
+                ? data.default_expert_model
+                : null,
+          });
         }
       })
       .catch(() => {});

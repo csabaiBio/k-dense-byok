@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -26,7 +27,8 @@ from .utils import (
     load_instructions,
 )
 
-load_dotenv()
+REPO_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(REPO_ROOT / "kady_agent" / ".env")
 
 DEFAULT_MODEL = (
     os.getenv("DEFAULT_AGENT_MODEL")

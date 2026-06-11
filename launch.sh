@@ -43,7 +43,25 @@ normalize_frontend_prefix() {
   fi
 }
 
+normalize_backend_prefix() {
+  local raw="$1"
+  raw="${raw%/}"
+  if [[ -z "$raw" || "$raw" == "/" ]]; then
+    echo ""
+  elif [[ "$raw" == /* ]]; then
+    echo "$raw"
+  else
+    echo "/$raw"
+  fi
+}
+
 FRONTEND_PREFIX="$(normalize_frontend_prefix "${FRONTEND_URL_PREFIX:-}")"
+BACKEND_PREFIX="$(normalize_backend_prefix "${BACKEND_URL_PREFIX:-}")"
+
+if [[ -z "${NEXT_PUBLIC_ADK_API_URL:-}" ]]; then
+  export NEXT_PUBLIC_ADK_API_URL="http://localhost:8181${BACKEND_PREFIX}"
+fi
+
 if [[ -n "${FRONTEND_URL:-}" ]]; then
   UI_URL="$FRONTEND_URL"
 else
@@ -73,7 +91,15 @@ echo "  → Backend on port 8181 (FastAPI + ADK agent)"
 # uvicorn to shut down mid-stream and stall /sandbox/* endpoints.
 # Note: edits to server.py require a manual restart of this script.
 #uv run uvicorn server:app --reload --reload-dir kady_agent --port 8181 &
-uv run uvicorn server:app --port 8181 &
+BACKEND_UVICORN_ARGS=(
+  --port 8181
+  --proxy-headers
+  --forwarded-allow-ips='*'
+)
+if [[ -n "$BACKEND_PREFIX" ]]; then
+  BACKEND_UVICORN_ARGS+=(--root-path "$BACKEND_PREFIX")
+fi
+uv run uvicorn server:app "${BACKEND_UVICORN_ARGS[@]}" &
 BACKEND_PID=$!
 
 echo "  → Frontend on port 3000 (Next.js UI)"
