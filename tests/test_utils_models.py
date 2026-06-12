@@ -58,6 +58,37 @@ def test_copy_skill_catalogue_respects_replace_existing(tmp_path) -> None:
     assert "name: x" in (target / "alpha" / "SKILL.md").read_text(encoding="utf-8")
 
 
+def test_copy_custom_skills_from_env(tmp_path, monkeypatch) -> None:
+    from kady_agent import utils
+
+    source = tmp_path / "custom"
+    target = tmp_path / "target"
+    source.mkdir()
+    (source / "alpha").mkdir()
+    (source / "alpha" / "SKILL.md").write_text("---\nname: Alpha\n---\n", encoding="utf-8")
+    (source / "beta").mkdir()
+    (source / "beta" / "SKILL.md").write_text("---\nname: Beta\n---\n", encoding="utf-8")
+
+    monkeypatch.setenv("KADY_CUSTOM_SKILLS_DIR", str(source))
+    copied = utils.copy_custom_skills(target_dir=str(target))
+
+    assert copied == 2
+    assert (target / "alpha" / "SKILL.md").is_file()
+    assert (target / "beta" / "SKILL.md").is_file()
+
+
+def test_copy_custom_skills_errors_on_missing_dir(monkeypatch, tmp_path) -> None:
+    from kady_agent import utils
+
+    monkeypatch.setenv("KADY_CUSTOM_SKILLS_DIR", str(tmp_path / "missing"))
+    try:
+        utils.copy_custom_skills(target_dir=str(tmp_path / "target"))
+    except FileNotFoundError as exc:
+        assert "KADY_CUSTOM_SKILLS_DIR" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected FileNotFoundError")
+
+
 def test_search_and_update_models_json(tmp_path, monkeypatch) -> None:
     from kady_agent import utils
 

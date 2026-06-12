@@ -80,6 +80,27 @@ type AgentEvent = {
   };
 };
 
+type SessionEvent = {
+  id?: unknown;
+  author?: unknown;
+  timestamp?: unknown;
+  partial?: unknown;
+  modelVersion?: unknown;
+  actions?: {
+    stateDelta?: Record<string, unknown>;
+    state_delta?: Record<string, unknown>;
+  };
+  content?: {
+    parts?: Array<{
+      text?: unknown;
+    }>;
+  };
+};
+
+type SessionPayload = {
+  events?: SessionEvent[];
+};
+
 const truncateText = (value: unknown, max = 12000) => {
   if (typeof value !== "string") return undefined;
   const compact = value.replace(/\s+/g, " ").trim();
@@ -244,7 +265,56 @@ export function applyAgentEventToMessage(
   return next;
 }
 
-export function useAgent() {
+function eventToMessage(event: SessionEvent): ChatMessage | null {
+  if (event.partial === true) return null;
+  const role = event.author === USER_ID ? "user" : "assistant";
+  const parts = Array.isArray(event.content?.parts) ? event.content.parts : [];
+  const content = parts
+    .map((part) => (typeof part.text === "string" ? part.text : ""))
+    .join("");
+  if (!content.trim()) return null;
+
+  const stateDelta = event.actions?.stateDelta ?? event.actions?.state_delta;
+  const turnId =
+    stateDelta && typeof stateDelta._turnId === "string"
+      ? stateDelta._turnId
+      : undefined;
+
+  const rawTimestamp = event.timestamp;
+  const timestampMs =
+    typeof rawTimestamp === "number" && Number.isFinite(rawTimestamp)
+      ? Math.round(rawTimestamp * 1000)
+      : Date.now();
+
+  return {
+    id:
+      typeof event.id === "string" && event.id.trim()
+        ? event.id
+        : `${role}-${timestampMs}`,
+    role,
+    content,
+    modelVersion:
+      typeof event.modelVersion === "string" ? event.modelVersion : undefined,
+    timestamp: timestampMs,
+    turnId,
+  };
+}
+
+export function sessionEventsToChatMessages(events: SessionEvent[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const event of events) {
+    const message = eventToMessage(event);
+    if (message) out.push(message);
+  }
+  return out;
+}
+
+interface UseAgentOptions {
+  initialSessionId?: string | null;
+}
+
+export function useAgent(options: UseAgentOptions = {}) {
+  const { initialSessionId = null } = options;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<Status>("ready");
   const sessionIdRef = useRef<string | null>(null);
@@ -252,6 +322,17 @@ export function useAgent() {
   const messageCounter = useRef(0);
 
   const nextId = () => String(++messageCounter.current);
+
+  const loadSessionMessages = useCallback(async (sessionId: string) => {
+    const res = await apiFetch(
+      `/apps/${APP_NAME}/users/${USER_ID}/sessions/${encodeURIComponent(sessionId)}`
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to load session ${sessionId}: ${res.status}`);
+    }
+    const payload = (await res.json()) as SessionPayload;
+    return sessionEventsToChatMessages(payload.events ?? []);
+  }, []);
 
   const ensureSession = useCallback(async () => {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -506,11 +587,36 @@ export function useAgent() {
     setMessages([]);
     setStatus("ready");
     sessionIdRef.current = null;
+    messageCounter.current = 0;
   }, []);
 
   // Switching projects must drop the current ADK session (it lives in a
   // different per-project SQLite DB) and start fresh.
   useEffect(() => onProjectChange(() => reset()), [reset]);
+
+  useEffect(() => {
+    if (!initialSessionId) return;
+    let cancelled = false;
+    sessionIdRef.current = initialSessionId;
+
+    void (async () => {
+      try {
+        const hydrated = await loadSessionMessages(initialSessionId);
+        if (cancelled) return;
+        setMessages(hydrated);
+        messageCounter.current = Math.max(messageCounter.current, hydrated.length);
+        setStatus("ready");
+      } catch {
+        if (cancelled) return;
+        sessionIdRef.current = null;
+        setMessages([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialSessionId, loadSessionMessages]);
 
   const getSessionId = useCallback(() => sessionIdRef.current, []);
 

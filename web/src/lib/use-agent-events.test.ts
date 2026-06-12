@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { applyAgentEventToMessage, type ChatMessage } from "@/lib/use-agent";
+import {
+  applyAgentEventToMessage,
+  sessionEventsToChatMessages,
+  type ChatMessage,
+} from "@/lib/use-agent";
 
 const baseMessage = (): ChatMessage => ({
   id: "assistant",
@@ -83,5 +87,72 @@ describe("applyAgentEventToMessage", () => {
       status: "complete",
       detail: "Used 'analysis' skills",
     });
+  });
+});
+
+describe("sessionEventsToChatMessages", () => {
+  it("maps user and assistant text events into chat messages", () => {
+    const messages = sessionEventsToChatMessages([
+      {
+        id: "u1",
+        author: "user",
+        timestamp: 1,
+        content: { parts: [{ text: "Question" }] },
+      },
+      {
+        id: "a1",
+        author: "root_agent",
+        timestamp: 2,
+        modelVersion: "openrouter/example",
+        actions: { stateDelta: { _turnId: "turn-1" } },
+        content: { parts: [{ text: "Answer" }] },
+      },
+    ]);
+
+    expect(messages).toEqual([
+      {
+        id: "u1",
+        role: "user",
+        content: "Question",
+        timestamp: 1000,
+        modelVersion: undefined,
+        turnId: undefined,
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "Answer",
+        timestamp: 2000,
+        modelVersion: "openrouter/example",
+        turnId: "turn-1",
+      },
+    ]);
+  });
+
+  it("drops partial and empty-text events", () => {
+    const messages = sessionEventsToChatMessages([
+      {
+        id: "p1",
+        author: "root_agent",
+        partial: true,
+        timestamp: 1,
+        content: { parts: [{ text: "partial" }] },
+      },
+      {
+        id: "f1",
+        author: "root_agent",
+        timestamp: 2,
+        content: { parts: [{ text: "" }] },
+      },
+      {
+        id: "f2",
+        author: "root_agent",
+        timestamp: 3,
+        content: { parts: [{ text: "final" }] },
+      },
+    ]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ id: "f2", content: "final" });
   });
 });

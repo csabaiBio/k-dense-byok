@@ -862,6 +862,7 @@ export interface ChatTabHandle {
 export interface ChatTabProps {
   tabId: string;
   isActive: boolean;
+  initialSessionId: string | null;
   defaultAgentModelId: string | null;
   defaultExpertModelId: string | null;
   // Shared sandbox/state passed in (one instance for the whole project)
@@ -881,6 +882,7 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
   {
     tabId,
     isActive,
+    initialSessionId,
     defaultAgentModelId,
     defaultExpertModelId,
     allFiles,
@@ -896,7 +898,9 @@ export const ChatTab = forwardRef<ChatTabHandle, ChatTabProps>(function ChatTab(
   },
   ref,
 ) {
-  const { messages, status, send, stop, getSessionId } = useAgent();
+  const { messages, status, send, stop, getSessionId } = useAgent({
+    initialSessionId,
+  });
   const isStreaming = status === "streaming" || status === "submitted";
 
   const turnMetaRef = useRef<Map<string, TurnMeta>>(new Map());

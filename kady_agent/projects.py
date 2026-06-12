@@ -574,10 +574,19 @@ def seed_project_skills(paths: ProjectPaths, *, allow_remote: bool = True) -> No
         if copied:
             print(f"Seeded {copied} skills for {paths.id} from {source}")
 
+    from .utils import (
+        copy_custom_skills,
+        download_scientific_skills,
+        sync_missing_scientific_skills,
+    )
+
+    try:
+        copy_custom_skills(target_dir=str(skills_dir), replace_existing=True)
+    except Exception as exc:
+        print(f"  warning: custom skills sync failed for {paths.id}: {exc}")
+
     if not allow_remote:
         return
-
-    from .utils import download_scientific_skills, sync_missing_scientific_skills
 
     try:
         installed = _count_project_skills(skills_dir)

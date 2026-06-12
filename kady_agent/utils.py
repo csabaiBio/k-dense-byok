@@ -148,6 +148,39 @@ def _copy_skill_catalogue(
     return skill_count
 
 
+def copy_custom_skills(
+    target_dir: str | None = None,
+    custom_skills_dir: str | None = None,
+    *,
+    replace_existing: bool = True,
+    env_var: str = "KADY_CUSTOM_SKILLS_DIR",
+) -> int:
+    """Copy skills from a local custom folder into the target skills dir.
+
+    Source directory can be passed explicitly via ``custom_skills_dir`` or
+    discovered from the ``env_var`` environment variable. Returns the number
+    of copied skill directories.
+    """
+    source_raw = custom_skills_dir or os.getenv(env_var)
+    if not source_raw:
+        return 0
+
+    source_path = Path(source_raw).expanduser().resolve()
+    if not source_path.is_dir():
+        raise FileNotFoundError(
+            f"Custom skills directory from {env_var} does not exist: {source_path}"
+        )
+
+    target_path = _resolve_skills_target(target_dir)
+    print(f"Copying custom skills from {source_path} to {target_path}...")
+    copied = _copy_skill_catalogue(
+        source_path, target_path, replace_existing=replace_existing
+    )
+    if copied:
+        print(f"Synced {copied} custom skills to {target_path.absolute()}")
+    return copied
+
+
 def download_scientific_skills(
     target_dir: str | None = None,
     github_repo: str = "K-Dense-AI/scientific-agent-skills",

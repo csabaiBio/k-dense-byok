@@ -28,6 +28,7 @@ from typing import Any
 import litellm
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils import get_llm_provider_logic
+from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLogging
 from litellm.llms.openrouter.chat.transformation import OpenrouterConfig
 
 # Ensure ``kady_agent`` is importable when the LiteLLM proxy is launched from
@@ -44,6 +45,9 @@ logger = logging.getLogger(__name__)
 
 _ORIG_GET_LLM_PROVIDER = get_llm_provider_logic.get_llm_provider
 _ORIG_OR_TRANSFORM_REQUEST = OpenrouterConfig.transform_request
+_ORIG_GOOGLE_GENAI_NON_STREAMING_SUCCESS_LOG = (
+    LiteLLMLogging._handle_non_streaming_google_genai_generate_content_response_logging
+)
 
 
 def _strip_openrouter_prefix(model: str) -> str:
@@ -141,6 +145,33 @@ def _patched_transform_request(  # type: ignore[no-untyped-def]
 
 
 OpenrouterConfig.transform_request = _patched_transform_request
+
+
+def _patched_google_genai_non_streaming_success_log(  # type: ignore[no-untyped-def]
+    self,
+    result,
+):
+    """Avoid logging-worker failures when LiteLLM drops httpx_response.
+
+    In litellm<=1.82.6 this path may run for successful Google/OpenRouter
+    calls where ``model_call_details['httpx_response']`` is unavailable.
+    The upstream handler raises, which is wrapped as a non-blocking
+    ``Success_Call Error`` and can flood logs or stall UI updates.
+    """
+    try:
+        return _ORIG_GOOGLE_GENAI_NON_STREAMING_SUCCESS_LOG(self, result)
+    except ValueError as exc:
+        if str(exc) != "Google GenAI Generate Content: httpx_response is None":
+            raise
+        logger.debug(
+            "Skipping Google GenAI success-response logging transform: %s", exc
+        )
+        return result
+
+
+LiteLLMLogging._handle_non_streaming_google_genai_generate_content_response_logging = (
+    _patched_google_genai_non_streaming_success_log
+)
 
 
 def _patched_get_llm_provider(  # type: ignore[no-untyped-def]

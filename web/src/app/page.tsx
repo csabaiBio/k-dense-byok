@@ -19,7 +19,7 @@ import { useConfig } from "@/lib/use-config";
 import { useSkills } from "@/lib/use-skills";
 import type { TurnMeta } from "@/lib/provenance";
 import { flattenFiles, useSandbox } from "@/lib/use-sandbox";
-import { onProjectChange } from "@/lib/projects";
+import { getActiveProjectId, onProjectChange } from "@/lib/projects";
 import {
   PanelLeftCloseIcon,
   PanelLeftIcon,
@@ -48,9 +48,84 @@ interface ChatTabEntry {
 
 const EMPTY_TURN_META: Map<string, TurnMeta> = new Map();
 const EMPTY_MESSAGES: ChatMessage[] = [];
+const TAB_STATE_STORAGE_KEY = "kady:chat-tab-state:v1";
 
 /** Stable id for the first tab so SSR and hydration match. */
 const INITIAL_TAB_ID = "tab-initial";
+
+interface PersistedChatTab {
+  id: string;
+  title: string;
+  sessionId: string | null;
+}
+
+interface PersistedProjectTabState {
+  tabs: PersistedChatTab[];
+  activeTabId: string;
+}
+
+function fallbackTabsState(): PersistedProjectTabState {
+  return {
+    tabs: [{ id: INITIAL_TAB_ID, title: defaultTabTitle(0), sessionId: null }],
+    activeTabId: INITIAL_TAB_ID,
+  };
+}
+
+function readStoredTabsForProject(projectId: string): PersistedProjectTabState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(TAB_STATE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, PersistedProjectTabState>;
+    const candidate = parsed?.[projectId];
+    if (!candidate || !Array.isArray(candidate.tabs)) return null;
+
+    const tabs = candidate.tabs
+      .filter((tab) => typeof tab?.id === "string" && typeof tab?.title === "string")
+      .slice(0, MAX_CHAT_TABS)
+      .map((tab) => ({
+        id: tab.id,
+        title: tab.title,
+        sessionId: typeof tab.sessionId === "string" ? tab.sessionId : null,
+      }));
+
+    if (tabs.length === 0) return null;
+    const activeTabId = tabs.some((tab) => tab.id === candidate.activeTabId)
+      ? candidate.activeTabId
+      : tabs[0].id;
+    return { tabs, activeTabId };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredTabsForProject(
+  projectId: string,
+  tabs: ChatTabEntry[],
+  activeTabId: string,
+  tabsMeta: Record<string, ChatTabMeta>,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(TAB_STATE_STORAGE_KEY);
+    const all = raw
+      ? (JSON.parse(raw) as Record<string, PersistedProjectTabState>)
+      : {};
+
+    all[projectId] = {
+      tabs: tabs.slice(0, MAX_CHAT_TABS).map((tab) => ({
+        id: tab.id,
+        title: tab.title,
+        sessionId: tabsMeta[tab.id]?.sessionId ?? null,
+      })),
+      activeTabId,
+    };
+
+    window.localStorage.setItem(TAB_STATE_STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    // best-effort cache only
+  }
+}
 
 function makeTabId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -76,6 +151,8 @@ function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
 }
 
 export default function ChatPage() {
+  const initialProjectId = getActiveProjectId();
+  const initialPersisted = readStoredTabsForProject(initialProjectId) ?? fallbackTabsState();
   const sandbox = useSandbox(false);
   const config = useConfig();
   const { updateAvailable } = useUpdateCheck();
@@ -90,11 +167,22 @@ export default function ChatPage() {
   // stays stable across React's strict-mode double-invocation of
   // useState's lazy initializer (which would otherwise mint two different
   // ids — one for the tabs array and one for activeTabId).
-  const initialTabId = INITIAL_TAB_ID;
-  const [tabs, setTabs] = useState<ChatTabEntry[]>(() => [
-    { id: initialTabId, title: defaultTabTitle(0) },
-  ]);
-  const [activeTabId, setActiveTabId] = useState<string>(() => initialTabId);
+  const [currentProjectId, setCurrentProjectId] = useState(initialProjectId);
+  const [tabs, setTabs] = useState<ChatTabEntry[]>(() =>
+    initialPersisted.tabs.map((tab) => ({ id: tab.id, title: tab.title })),
+  );
+  const [activeTabId, setActiveTabId] = useState<string>(() =>
+    initialPersisted.activeTabId,
+  );
+  const [tabSessionHydrationIds, setTabSessionHydrationIds] = useState<
+    Record<string, string>
+  >(() => {
+    const out: Record<string, string> = {};
+    for (const tab of initialPersisted.tabs) {
+      if (tab.sessionId) out[tab.id] = tab.sessionId;
+    }
+    return out;
+  });
   const [view, setView] = useState<"chat" | "workflows">("chat");
   // Mirror of tabs in a ref so synchronous handlers can read length without
   // putting impure logic inside a setState updater (which strict mode runs
@@ -108,6 +196,9 @@ export default function ChatPage() {
   // read from this to drive the cost pill, provenance panel, and tab
   // strip badges (streaming spinner, message count) for the active tab.
   const [tabsMeta, setTabsMeta] = useState<Record<string, ChatTabMeta>>({});
+  useEffect(() => {
+    writeStoredTabsForProject(currentProjectId, tabs, activeTabId, tabsMeta);
+  }, [currentProjectId, tabs, activeTabId, tabsMeta]);
   const tabHandles = useRef<Map<string, ChatTabHandle | null>>(new Map());
   // Stable per-tab ref callbacks so React doesn't repeatedly clear+set the
   // tab handle map on every render (inline `ref={(h) => ...}` would).
@@ -237,13 +328,22 @@ export default function ChatPage() {
   // the strip.
   useEffect(
     () =>
-      onProjectChange(() => {
-        const id = makeTabId();
+      onProjectChange((projectId) => {
+        const restored = readStoredTabsForProject(projectId) ?? fallbackTabsState();
+        const hydrationIds: Record<string, string> = {};
+        for (const tab of restored.tabs) {
+          if (tab.sessionId) hydrationIds[tab.id] = tab.sessionId;
+        }
+
         tabHandles.current.clear();
         tabRefCallbacks.current.clear();
+        setCurrentProjectId(projectId);
         setTabsMeta({});
-        setTabs([{ id, title: defaultTabTitle(0) }]);
-        setActiveTabId(id);
+        setTabs(
+          restored.tabs.map((tab) => ({ id: tab.id, title: tab.title })),
+        );
+        setActiveTabId(restored.activeTabId);
+        setTabSessionHydrationIds(hydrationIds);
         setView("chat");
         setCostRefreshKey((k) => k + 1);
       }),
@@ -292,6 +392,12 @@ export default function ChatPage() {
     });
     tabHandles.current.delete(id);
     tabRefCallbacks.current.delete(id);
+    setTabSessionHydrationIds((prev) => {
+      if (!(id in prev)) return prev;
+      const { [id]: _removed, ...rest } = prev;
+      void _removed;
+      return rest;
+    });
     setTabsMeta((prev) => {
       if (!(id in prev)) return prev;
       const { [id]: _removed, ...rest } = prev;
@@ -599,6 +705,7 @@ export default function ChatPage() {
               ref={getTabRefCallback(t.id)}
               tabId={t.id}
               isActive={view === "chat" && t.id === activeTabId}
+              initialSessionId={tabSessionHydrationIds[t.id] ?? null}
               defaultAgentModelId={config.defaultAgentModelId}
               defaultExpertModelId={config.defaultExpertModelId}
               allFiles={allFiles}

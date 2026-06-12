@@ -243,3 +243,45 @@ def test_proxy_callback_records_gemini_alias_cost(active_project: str) -> None:
         runtime.read_costs("session-gemini-proxy", project_id=active_project)["expertUsd"]
         == 0.01
     )
+
+
+def test_google_genai_success_log_patch_skips_missing_httpx_response(monkeypatch) -> None:
+    import litellm_callbacks
+
+    marker = {"ok": True}
+
+    def _raise_missing_httpx(self, result):
+        raise ValueError("Google GenAI Generate Content: httpx_response is None")
+
+    monkeypatch.setattr(
+        litellm_callbacks,
+        "_ORIG_GOOGLE_GENAI_NON_STREAMING_SUCCESS_LOG",
+        _raise_missing_httpx,
+    )
+
+    output = litellm_callbacks._patched_google_genai_non_streaming_success_log(
+        object(), marker
+    )
+    assert output is marker
+
+
+def test_google_genai_success_log_patch_keeps_other_errors(monkeypatch) -> None:
+    import litellm_callbacks
+
+    def _raise_other(self, result):
+        raise ValueError("different error")
+
+    monkeypatch.setattr(
+        litellm_callbacks,
+        "_ORIG_GOOGLE_GENAI_NON_STREAMING_SUCCESS_LOG",
+        _raise_other,
+    )
+
+    try:
+        litellm_callbacks._patched_google_genai_non_streaming_success_log(
+            object(), {"ok": True}
+        )
+    except ValueError as exc:
+        assert str(exc) == "different error"
+    else:
+        raise AssertionError("expected ValueError to be re-raised")
