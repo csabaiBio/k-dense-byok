@@ -109,7 +109,8 @@ def test_write_merged_settings_and_browser_use_config(active_project: str) -> No
         {"enabled": True, "headed": True, "profile": "Default", "session": "research"}
     )
     spec = mcp.build_browser_use_mcp_spec()
-    assert spec["command"] == "uvx"
+    assert spec["command"] == "uv"
+    assert spec["args"][:3] == ["tool", "run", "browser-use"]
     assert "--headed" in spec["args"]
     assert "Default" in spec["args"]
 

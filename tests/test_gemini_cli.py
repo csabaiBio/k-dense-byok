@@ -23,6 +23,10 @@ def test_cli_model_routing_and_workdir_safety(active_project: str) -> None:
 
     assert gemini_cli._resolve_working_directory("nested", sandbox) == nested.resolve()
     assert gemini_cli._resolve_working_directory("/tmp", sandbox) == sandbox
+    assert gemini_cli._resolve_working_directory(". ", sandbox) == sandbox
+    assert gemini_cli._resolve_working_directory(" ./nested", sandbox) == sandbox
+    assert gemini_cli._resolve_working_directory('."}', sandbox) == sandbox
+    assert gemini_cli._resolve_working_directory("nested/../.'}", sandbox) == sandbox
     assert gemini_cli._build_cli_args("hi", "anthropic/claude") == [
         "gemini",
         "-p",

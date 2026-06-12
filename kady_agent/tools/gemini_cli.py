@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -42,6 +43,9 @@ DEFAULT_EXPERT_MODEL = (
 )
 
 logger = logging.getLogger(__name__)
+
+_UNSAFE_WORKDIR_CHARS = re.compile(r"[\x00-\x1f\x7f\"'{}\[\]<>`|;&]")
+_SAFE_WORKDIR_TOKEN = re.compile(r"^[A-Za-z0-9._/\-]+$")
 
 
 def _normalize_gateway_base_url(raw: str | None) -> str | None:
@@ -211,9 +215,40 @@ def _resolve_working_directory(working_directory: Optional[str], sandbox: Path) 
     """Resolve requested working directories safely inside the sandbox."""
     if working_directory is None or not working_directory.strip():
         return sandbox
-    wd = Path(working_directory)
+    raw = working_directory
+    stripped = raw.strip()
+    if stripped != raw:
+        logger.warning(
+            "Rejected whitespace-padded working_directory=%r; falling back to sandbox root",
+            working_directory,
+        )
+        return sandbox
+    raw = stripped
+    if raw in {".", "./"}:
+        return sandbox
+    # Guard against malformed tool-call args such as ."} that can create
+    # unintended dirs and make Gemini CLI ignore the intended workspace settings.
+    if _UNSAFE_WORKDIR_CHARS.search(raw):
+        logger.warning(
+            "Rejected unsafe working_directory=%r; falling back to sandbox root",
+            working_directory,
+        )
+        return sandbox
+    if not _SAFE_WORKDIR_TOKEN.fullmatch(raw):
+        logger.warning(
+            "Rejected non-portable working_directory=%r; falling back to sandbox root",
+            working_directory,
+        )
+        return sandbox
+    wd = Path(raw)
     cwd = (sandbox / wd).resolve() if not wd.is_absolute() else wd.resolve()
-    return cwd if cwd.is_relative_to(sandbox) else sandbox
+    if cwd.is_relative_to(sandbox):
+        return cwd
+    logger.warning(
+        "Rejected out-of-sandbox working_directory=%r; falling back to sandbox root",
+        working_directory,
+    )
+    return sandbox
 
 
 def _apply_sandbox_venv(env: dict[str, str], cwd: Path) -> None:

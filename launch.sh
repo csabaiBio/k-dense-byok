@@ -81,7 +81,7 @@ echo "Starting services..."
 echo
 
 echo "  → LiteLLM proxy on port 4000 (routes LLM calls to OpenRouter)"
-#uv run litellm --config litellm_config.yaml --port 4000 &
+uv run litellm --config litellm_config.yaml --port 4000 &
 #LITELLM_PID=$!
 #sleep 2
 

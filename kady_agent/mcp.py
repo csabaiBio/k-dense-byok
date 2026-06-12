@@ -459,7 +459,7 @@ def build_browser_use_mcp_spec() -> dict | None:
     if not cfg.get("enabled", True):
         return None
 
-    args: list[str] = ["browser-use"]
+    args: list[str] = ["tool", "run", "browser-use"]
     if cfg.get("headed"):
         args.append("--headed")
     profile = cfg.get("profile")
@@ -469,7 +469,7 @@ def build_browser_use_mcp_spec() -> dict | None:
     if session:
         args += ["--session", str(session)]
     args.append("--mcp")
-    return {"command": "uvx", "args": args}
+    return {"command": "uv", "args": args}
 
 
 def build_paperclip_mcp_spec() -> dict | None:
@@ -489,8 +489,8 @@ def build_default_settings() -> dict:
         "security": {"auth": {"selectedType": "gemini-api-key"}},
         "mcpServers": {
             "docling": {
-                "command": "uvx",
-                "args": ["--from=docling-mcp", "docling-mcp-server"],
+                "command": "uv",
+                "args": ["tool", "run", "--from=docling-mcp", "docling-mcp-server"],
             },
             # Lets the expert drop highlights / sticky notes into the
             # <pdf>.annotations.json sidecar so the user-facing PDF
@@ -959,8 +959,8 @@ docling_mcp = ResilientMcpToolset(
     McpToolset(
         connection_params=StdioConnectionParams(
             server_params=StdioServerParameters(
-                command="uvx",
-                args=["--from=docling-mcp", "docling-mcp-server"],
+                command="uv",
+                args=["tool", "run", "--from=docling-mcp", "docling-mcp-server"],
             ),
             timeout=120.0,
         ),
