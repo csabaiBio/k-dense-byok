@@ -27,6 +27,23 @@ export const DEFAULT_PROJECT_ID = "default";
 export const PORT = Number(process.env.KADY_PORT ?? process.env.PORT ?? 8000);
 export const HOST = process.env.KADY_HOST ?? "127.0.0.1";
 
+/**
+ * Optional path prefix the backend is mounted under behind a reverse proxy
+ * (e.g. a JupyterHub-style service proxy that forwards the full request path
+ * unstripped, the same role `--root-path` played for the old uvicorn/FastAPI
+ * backend). Normalized to start with "/" and never end with "/"; empty
+ * string means "no prefix" (unchanged local-dev behavior).
+ */
+function normalizeUrlPrefix(raw: string | undefined): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "/") return "";
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeadingSlash.replace(/\/+$/, "");
+}
+
+export const BACKEND_URL_PREFIX = normalizeUrlPrefix(process.env.BACKEND_URL_PREFIX);
+
 /** Default orchestrator model, routed through Pi's OpenRouter provider. */
 export const DEFAULT_MODEL_PROVIDER =
   process.env.DEFAULT_MODEL_PROVIDER ?? "openrouter";

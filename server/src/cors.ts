@@ -9,9 +9,19 @@ const CORS_ALLOW = [
   /^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}:\d+$/,
 ];
 
+// Extra exact origins allowed behind a reverse proxy (e.g. the public https
+// hostname Kady is served under), configured via CORS_ALLOW_ORIGINS as a
+// comma-separated list. Read once at module load, same as the rest of config.
+const EXTRA_CORS_ALLOW_ORIGINS = (process.env.CORS_ALLOW_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
 export function isCorsOriginAllowed(origin: string | undefined): boolean {
   // Non-browser clients (curl, same-origin) send no Origin -> allow.
   if (!origin) return true;
+  const normalized = origin.replace(/\/+$/, "");
+  if (EXTRA_CORS_ALLOW_ORIGINS.includes(normalized)) return true;
   return CORS_ALLOW.some((re) => re.test(origin));
 }
 

@@ -11,8 +11,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fastifyCors from "@fastify/cors";
 import multipart from "@fastify/multipart";
-import Fastify, { type FastifyRequest } from "fastify";
-import { DEFAULT_PROJECT_ID, HOST, PORT, modalConfigured } from "./config.ts";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import { BACKEND_URL_PREFIX, DEFAULT_PROJECT_ID, HOST, PORT, modalConfigured } from "./config.ts";
 import { isCorsOriginAllowed } from "./cors.ts";
 import { ensureProjectExists, getProject } from "./projects.ts";
 import { withActiveProject } from "./scope.ts";
@@ -96,15 +96,29 @@ export async function buildApp() {
   });
 
   app.get("/health", async () => ({ status: "ok" }));
-  app.get("/config", async () => ({ modal_configured: modalConfigured() }));
 
-  await registerProjectRoutes(app);
-  await registerSessionRoutes(app);
-  await registerSandboxRoutes(app);
-  await registerSystemRoutes(app);
-  await registerMcpRoutes(app);
-  await registerCredentialRoutes(app);
-  await registerAgentRoutes(app);
+  const registerRoutes = async (instance: FastifyInstance) => {
+    instance.get("/config", async () => ({ modal_configured: modalConfigured() }));
+    await registerProjectRoutes(instance);
+    await registerSessionRoutes(instance);
+    await registerSandboxRoutes(instance);
+    await registerSystemRoutes(instance);
+    await registerMcpRoutes(instance);
+    await registerCredentialRoutes(instance);
+    await registerAgentRoutes(instance);
+  };
+
+  if (BACKEND_URL_PREFIX) {
+    // Behind a reverse proxy that forwards the full request path unstripped
+    // (the same role `--root-path` played for the old uvicorn/FastAPI
+    // backend), mount every route under the configured prefix via a scoped
+    // Fastify instance. `/health` also stays reachable unprefixed for local
+    // liveness probes.
+    await app.register(registerRoutes, { prefix: BACKEND_URL_PREFIX });
+    app.get(`${BACKEND_URL_PREFIX}/health`, async () => ({ status: "ok" }));
+  } else {
+    await registerRoutes(app);
+  }
 
   return app;
 }
