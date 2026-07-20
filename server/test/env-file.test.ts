@@ -71,4 +71,60 @@ describe("applyEnvFile", () => {
   it("returns false for a missing file", () => {
     expect(applyEnvFile(path.join(os.tmpdir(), "kady-definitely-missing.env"))).toBe(false);
   });
+
+  it("expands simple ${VAR} references", () => {
+    track("KADY_T_BASE", "KADY_T_DERIVED");
+    process.env.KADY_T_BASE = "hello";
+    loadEnv('KADY_T_DERIVED="${KADY_T_BASE}_world"', { override: true });
+    expect(process.env.KADY_T_DERIVED).toBe("hello_world");
+  });
+
+  it("expands ${VAR#pattern} prefix removal", () => {
+    track("KADY_T_URL", "KADY_T_PREFIX");
+    process.env.KADY_T_URL = "/notebook/user";
+    loadEnv('KADY_T_PREFIX="${KADY_T_URL#/}"', { override: true });
+    expect(process.env.KADY_T_PREFIX).toBe("notebook/user");
+  });
+
+  it("handles ${VAR#pattern} when pattern doesn't match", () => {
+    track("KADY_T_URL2", "KADY_T_PREFIX2");
+    process.env.KADY_T_URL2 = "notebook/user";
+    loadEnv('KADY_T_PREFIX2="${KADY_T_URL2#/}"', { override: true });
+    expect(process.env.KADY_T_PREFIX2).toBe("notebook/user");
+  });
+
+  it("expands ${VAR%pattern} suffix removal", () => {
+    track("KADY_T_URLSUF", "KADY_T_BASE2");
+    process.env.KADY_T_URLSUF = "http://example.com/";
+    loadEnv('KADY_T_BASE2="${KADY_T_URLSUF%/}"', { override: true });
+    expect(process.env.KADY_T_BASE2).toBe("http://example.com");
+  });
+
+  it("chains multiple variable expansions for proxy config", () => {
+    track("NB_URL", "SERVERNAME", "NB_URL_PREFIX", "BACKEND_URL_PREFIX", 
+          "FRONTEND_URL", "FRONTEND_URL_PREFIX", "CORS_ALLOW_ORIGINS", "NEXT_PUBLIC_ADK_API_URL");
+    process.env.NB_URL = "notebook/wfct0p-denario";
+    process.env.SERVERNAME = "k8plex-veo.vo.elte.hu";
+    loadEnv(
+      `NB_URL_PREFIX="/\${NB_URL#/}"
+BACKEND_URL_PREFIX="\${NB_URL_PREFIX}/byok"
+FRONTEND_URL="https://\${SERVERNAME}\${NB_URL_PREFIX}"
+FRONTEND_URL_PREFIX="\${NB_URL_PREFIX}/app"
+CORS_ALLOW_ORIGINS="https://\${SERVERNAME}"
+NEXT_PUBLIC_ADK_API_URL="\${NB_URL_PREFIX}/byok"`,
+      { override: true }
+    );
+    expect(process.env.NB_URL_PREFIX).toBe("/notebook/wfct0p-denario");
+    expect(process.env.BACKEND_URL_PREFIX).toBe("/notebook/wfct0p-denario/byok");
+    expect(process.env.FRONTEND_URL).toBe("https://k8plex-veo.vo.elte.hu/notebook/wfct0p-denario");
+    expect(process.env.FRONTEND_URL_PREFIX).toBe("/notebook/wfct0p-denario/app");
+    expect(process.env.CORS_ALLOW_ORIGINS).toBe("https://k8plex-veo.vo.elte.hu");
+    expect(process.env.NEXT_PUBLIC_ADK_API_URL).toBe("/notebook/wfct0p-denario/byok");
+  });
+
+  it("handles missing variables as empty strings", () => {
+    track("KADY_T_MISSING");
+    loadEnv('KADY_T_MISSING="${NONEXISTENT_VAR}/path"', { override: true });
+    expect(process.env.KADY_T_MISSING).toBe("/path");
+  });
 });

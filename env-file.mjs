@@ -12,6 +12,30 @@
  */
 import fs from "node:fs";
 
+/** Expand ${VAR} and ${VAR#/} and ${VAR%/} references in a value. */
+function expandVariables(value) {
+  // Replace ${VAR}, ${VAR#pattern}, ${VAR%pattern} with environment values
+  return value.replace(/\$\{([^}]+)\}/g, (match, expr) => {
+    // Handle ${VAR#pattern} - strip prefix
+    let prefixMatch = expr.match(/^([^#]+)#(.+)$/);
+    if (prefixMatch) {
+      const [, varName, pattern] = prefixMatch;
+      const val = process.env[varName] || "";
+      // Simple prefix removal (not full glob pattern matching)
+      return val.startsWith(pattern) ? val.slice(pattern.length) : val;
+    }
+    // Handle ${VAR%pattern} - strip suffix
+    let suffixMatch = expr.match(/^([^%]+)%(.+)$/);
+    if (suffixMatch) {
+      const [, varName, pattern] = suffixMatch;
+      const val = process.env[varName] || "";
+      return val.endsWith(pattern) ? val.slice(0, -pattern.length) : val;
+    }
+    // Simple ${VAR}
+    return process.env[expr] || "";
+  });
+}
+
 /** Load KEY=VALUE pairs from `file` into process.env. Returns false if the
  *  file can't be read. */
 export function applyEnvFile(file, { override = false } = {}) {
@@ -37,6 +61,8 @@ export function applyEnvFile(file, { override = false } = {}) {
       const hash = value.search(/\s#/);
       if (hash !== -1) value = value.slice(0, hash).trimEnd();
     }
+    // Expand variable references
+    value = expandVariables(value);
     if (key && (override || process.env[key] === undefined)) process.env[key] = value;
   }
   return true;
