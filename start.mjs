@@ -8,6 +8,7 @@
  * Flags:
  *   --check       report dependencies/environment and exit (no installs, no services)
  *   --no-browser  don't open the UI in a browser once it's up
+ *   --launch-only skip uv installation and project provisioning
  */
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -17,12 +18,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyEnvFile } from "./env-file.mjs";
 
-const repoRoot = path.dirname(fileURLToPath(import.meta.url));
+const launcherRoot = path.dirname(fileURLToPath(import.meta.url));
 const isWin = process.platform === "win32";
 const flags = {
   check: process.argv.includes("--check"),
   noBrowser: process.argv.includes("--no-browser"),
+  launchOnly: process.argv.includes("--launch-only"),
 };
+const repoRoot = flags.launchOnly && process.env.KADY_REPO_ROOT
+  ? path.resolve(process.env.KADY_REPO_ROOT)
+  : launcherRoot;
 
 // Legacy conhost garbles unicode; Windows Terminal (WT_SESSION) renders it fine.
 const sym =
@@ -99,6 +104,8 @@ function uvInstalled() {
 function ensureUv() {
   if (uvInstalled()) {
     log(`  uv ${sym.ok}`);
+  } else if (flags.launchOnly) {
+    log(`  ${sym.warn} uv not found — Python tasks will fail until uv is installed.`);
   } else if (flags.check) {
     log(`  ${sym.warn} uv not found — it will be installed on the next full start.`);
   } else {
@@ -585,8 +592,15 @@ if (flags.check) {
   process.exit(0);
 }
 
-installBackendPackages();
-installPackages("web", "frontend");
+for (const [dir, binary] of [["server", "tsx"], ["web", "next"]]) {
+  const executable = path.join(repoRoot, dir, "node_modules", ".bin", binary);
+  try {
+    fs.accessSync(executable, fs.constants.X_OK);
+  } catch {
+    fail(`Shared ${dir} dependencies are missing or not executable: ${executable}`);
+  }
+}
+log("Using preinstalled shared dependencies; skipping npm install.");
 log("");
 
 const BACKEND_PORT = Number(process.env.KADY_PORT || 8000);
@@ -625,17 +639,19 @@ const uiLaunchUrl = authRequired
 await freePort(BACKEND_PORT, "backend");
 await freePort(FRONTEND_PORT, "app UI");
 
-log("Preparing projects (ensures default project, downloads scientific skills from K-Dense)...");
-if (run("npm", ["run", "prep", "--silent"], { cwd: path.join(repoRoot, "server") }) !== 0) {
-  log("  (skills download skipped/failed — continuing)");
+if (!flags.launchOnly) {
+  log("Preparing projects (ensures default project, downloads scientific skills from K-Dense)...");
+  if (run("npm", ["run", "prep", "--silent"], { cwd: path.join(repoRoot, "server") }) !== 0) {
+    log("  (skills download skipped/failed — continuing)");
+  }
+  log("");
 }
-log("");
 
 log("Starting services...");
 log("");
 startService(`Backend on port ${BACKEND_PORT} (Pi agent, TypeScript)`, "server", ["run", "start"]);
 startService(`Frontend on port ${FRONTEND_PORT} (Next.js UI)`, "web", [
-  "run", "dev", "--", "-p", String(FRONTEND_PORT), "-H", FRONTEND_HOST,
+  "run", "dev", "--", "--webpack", "-p", String(FRONTEND_PORT), "-H", FRONTEND_HOST,
 ]);
 
 process.on("SIGINT", () => stopAll(0));
