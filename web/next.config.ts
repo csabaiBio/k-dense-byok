@@ -25,10 +25,19 @@ function normalizeBasePath(value: string | undefined): string | undefined {
   return withLeadingSlash.replace(/\/+$/, "");
 }
 
+function allowedDevOrigins(): string[] {
+  return [...new Set(
+    (process.env.KADY_ALLOWED_HOSTS ?? "")
+      .split(/[\s,]+/)
+      .map((host) => host.trim().replace(/:\d+$/, ""))
+      .filter(Boolean),
+  )];
+}
+
 const nextConfig: NextConfig = {
   devIndicators: false,
   basePath: normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH),
-  allowedDevOrigins: ["k8plex-veo.vo.elte.hu"],
+  allowedDevOrigins: allowedDevOrigins(),
   async headers() {
     return [{ source: "/office/:path*", headers: [
       { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
