@@ -12,6 +12,8 @@ fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 [[ -d $BASE ]] || fail "Base repository not found: $BASE"
 [[ -d $SHARED ]] || fail "Shared installation not found: $SHARED"
 [[ -f $BASE/.env && ! -L $BASE/.env ]] || fail "The base .env must be a regular file."
+[[ -f $BASE/pi-agent-custommodels.json && ! -L $BASE/pi-agent-custommodels.json ]] ||
+  fail "The base custom models file must be a regular file."
 [[ -d ${HOME:-} && -w $HOME ]] || fail "HOME must be a writable directory."
 command -v flock >/dev/null || fail "flock is required to serialize startup setup."
 
@@ -31,7 +33,9 @@ for dir in server web; do
 done
 
 temp=
+model_temp=
 cleanup() {
+  if [[ -n $model_temp ]]; then rm -f -- "$model_temp"; fi
   if [[ -n $temp && -d $temp ]]; then rm -rf -- "$temp"; fi
 }
 trap cleanup EXIT
@@ -79,5 +83,25 @@ if [[ -n $temp ]]; then
   [[ ! -e $target ]] || fail "User path appeared during setup: $USER_REPO"
   rmdir -- "$temp"
   temp=
+fi
+
+user_home="/v/$NB_USER"
+# [[ -d $user_home && ! -L $user_home && -O $user_home ]] ||
+  # fail "User home must be a directory owned by the current user: $user_home"
+for dir in "$user_home/.kady" "$user_home/.kady/pi-agent"; do
+  mkdir -m 700 -- "$dir" 2>/dev/null || [[ -d $dir && ! -L $dir && -O $dir ]] ||
+    fail "Cannot create a private agent directory: $dir"
+done
+agent_dir="$user_home/.kady/pi-agent"
+models_file="$agent_dir/models.json"
+if [[ -e $models_file || -L $models_file ]]; then
+  [[ -f $models_file && ! -L $models_file ]] || fail "Existing models.json must be a regular file."
+else
+  model_temp=$(mktemp "$agent_dir/.models.json.XXXXXXXX")
+  cp -- "$BASE/pi-agent-custommodels.json" "$model_temp"
+  chmod 600 "$model_temp"
+  ln -- "$model_temp" "$models_file"
+  rm -- "$model_temp"
+  model_temp=
 fi
 printf 'User copy ready: %s\n' "$USER_REPO"
